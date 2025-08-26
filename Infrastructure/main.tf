@@ -9,14 +9,6 @@
 provider "aws" {
   profile = var.aws_profile
   region  = var.aws_region
-
-  # provider level tags - yet inconsistent when executing 
-  # default_tags {
-  #   tags = {
-  #     Created_by = "Terraform"
-  #     Project    = "AWS_demo_fullstack_devops"
-  #   }
-  # }
 }
 
 # ------- Random numbers intended to be used as unique identifiers for resources -------
@@ -86,120 +78,76 @@ module "target_group_client_green" {
   health_check_port   = var.port_app_client
 }
 
-# ------- Creating Security Group for the server ALB -------
-module "security_group_alb_server" {
+# ------- Creating Security Group for the consolidated ALB -------
+module "security_group_alb_consolidated" {
   source              = "./Modules/SecurityGroup"
-  name                = "alb-${var.environment_name}-server"
-  description         = "Controls access to the server ALB"
+  name                = "alb-${var.environment_name}-consolidated"
+  description         = "Controls access to the consolidated ALB"
   vpc_id              = module.networking.aws_vpc
   cidr_blocks_ingress = ["0.0.0.0/0"]
   ingress_port        = 80
 }
 
-# ------- Creating Security Group for the client ALB -------
-module "security_group_alb_client" {
-  source              = "./Modules/SecurityGroup"
-  name                = "alb-${var.environment_name}-client"
-  description         = "Controls access to the client ALB"
-  vpc_id              = module.networking.aws_vpc
-  cidr_blocks_ingress = ["0.0.0.0/0"]
-  ingress_port        = 80
-}
-
-# ------- Creating Server Application ALB -------
-module "alb_server" {
+# ------- Creating Consolidated ALB -------
+module "alb_consolidated" {
   source         = "./Modules/ALB"
   create_alb     = true
-  name           = "${var.environment_name}-ser"
+  name           = "${var.environment_name}-consolidated"
   subnets        = [module.networking.public_subnets[0], module.networking.public_subnets[1]]
-  security_group = module.security_group_alb_server.sg_id
+  security_group = module.security_group_alb_consolidated.sg_id
   target_group   = module.target_group_server_blue.arn_tg
 }
 
-# ------- Creating Client Application ALB -------
-module "alb_client" {
-  source         = "./Modules/ALB"
-  create_alb     = true
-  name           = "${var.environment_name}-cli"
-  subnets        = [module.networking.public_subnets[0], module.networking.public_subnets[1]]
-  security_group = module.security_group_alb_client.sg_id
-  target_group   = module.target_group_client_blue.arn_tg
+# ------- Creating ALB Listener Rules for path-based routing -------
+resource "aws_lb_listener_rule" "server_path" {
+  listener_arn = module.alb_consolidated.arn_listener
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = module.target_group_server_blue.arn_tg
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/*"]
+    }
+  }
 }
 
-# ------- ECS Role -------
-module "ecs_role" {
-  source             = "./Modules/IAM"
-  create_ecs_role    = true
-  name               = var.iam_role_name["ecs"]
-  name_ecs_task_role = var.iam_role_name["ecs_task_role"]
-  dynamodb_table     = [module.dynamodb_table.dynamodb_table_arn]
+resource "aws_lb_listener_rule" "client_path" {
+  listener_arn = module.alb_consolidated.arn_listener
+  priority     = 200
+
+  action {
+    type             = "forward"
+    target_group_arn = module.target_group_client_blue.arn_tg
+  }
+
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
 }
 
-# ------- Creating a IAM Policy for role -------
-module "ecs_role_policy" {
-  source        = "./Modules/IAM"
-  name          = "ecs-ecr-${var.environment_name}"
-  create_policy = true
-  attach_to     = module.ecs_role.name_role
-}
-
-# ------- Creating server ECR Repository to store Docker Images -------
-module "ecr_server" {
-  source = "./Modules/ECR"
-  name   = "repo-server"
-}
-
-# ------- Creating client ECR Repository to store Docker Images -------
-module "ecr_client" {
-  source = "./Modules/ECR"
-  name   = "repo-client"
-}
-
-# ------- Creating ECS Task Definition for the server -------
-module "ecs_taks_definition_server" {
-  source             = "./Modules/ECS/TaskDefinition"
-  name               = "${var.environment_name}-server"
-  container_name     = var.container_name["server"]
-  execution_role_arn = module.ecs_role.arn_role
-  task_role_arn      = module.ecs_role.arn_role_ecs_task_role
-  cpu                = 256
-  memory             = "512"
-  docker_repo        = module.ecr_server.ecr_repository_url
-  region             = var.aws_region
-  container_port     = var.port_app_server
-}
-
-# ------- Creating ECS Task Definition for the client -------
-module "ecs_taks_definition_client" {
-  source             = "./Modules/ECS/TaskDefinition"
-  name               = "${var.environment_name}-client"
-  container_name     = var.container_name["client"]
-  execution_role_arn = module.ecs_role.arn_role
-  task_role_arn      = module.ecs_role.arn_role_ecs_task_role
-  cpu                = 256
-  memory             = "512"
-  docker_repo        = module.ecr_client.ecr_repository_url
-  region             = var.aws_region
-  container_port     = var.port_app_client
-}
-
-# ------- Creating a server Security Group for ECS TASKS -------
+# ------- Creating Security Group for ECS TASKS -------
 module "security_group_ecs_task_server" {
   source          = "./Modules/SecurityGroup"
   name            = "ecs-task-${var.environment_name}-server"
   description     = "Controls access to the server ECS task"
   vpc_id          = module.networking.aws_vpc
   ingress_port    = var.port_app_server
-  security_groups = [module.security_group_alb_server.sg_id]
+  security_groups = [module.security_group_alb_consolidated.sg_id]
 }
-# ------- Creating a client Security Group for ECS TASKS -------
+
 module "security_group_ecs_task_client" {
   source          = "./Modules/SecurityGroup"
   name            = "ecs-task-${var.environment_name}-client"
   description     = "Controls access to the client ECS task"
   vpc_id          = module.networking.aws_vpc
   ingress_port    = var.port_app_client
-  security_groups = [module.security_group_alb_client.sg_id]
+  security_groups = [module.security_group_alb_consolidated.sg_id]
 }
 
 # ------- Creating ECS Cluster -------
@@ -210,7 +158,7 @@ module "ecs_cluster" {
 
 # ------- Creating ECS Service server -------
 module "ecs_service_server" {
-  depends_on          = [module.alb_server]
+  depends_on          = [module.alb_consolidated]
   source              = "./Modules/ECS/Service"
   name                = "${var.environment_name}-server"
   desired_tasks       = 1
@@ -225,7 +173,7 @@ module "ecs_service_server" {
 
 # ------- Creating ECS Service client -------
 module "ecs_service_client" {
-  depends_on          = [module.alb_client]
+  depends_on          = [module.alb_consolidated]
   source              = "./Modules/ECS/Service"
   name                = "${var.environment_name}-client"
   desired_tasks       = 1
@@ -329,7 +277,7 @@ module "codebuild_client" {
   container_name         = var.container_name["client"]
   service_port           = var.port_app_client
   ecs_role               = var.iam_role_name["ecs"]
-  server_alb_url         = module.alb_server.dns_alb
+  server_alb_url         = module.alb_consolidated.dns_alb
 }
 
 # ------- Creating the server CodeDeploy project -------
@@ -338,7 +286,7 @@ module "codedeploy_server" {
   name            = "Deploy-${var.environment_name}-server"
   ecs_cluster     = module.ecs_cluster.ecs_cluster_name
   ecs_service     = module.ecs_service_server.ecs_service_name
-  alb_listener    = module.alb_server.arn_listener
+  alb_listener    = module.alb_consolidated.arn_listener
   tg_blue         = module.target_group_server_blue.tg_name
   tg_green        = module.target_group_server_green.tg_name
   sns_topic_arn   = module.sns.sns_arn
@@ -351,7 +299,7 @@ module "codedeploy_client" {
   name            = "Deploy-${var.environment_name}-client"
   ecs_cluster     = module.ecs_cluster.ecs_cluster_name
   ecs_service     = module.ecs_service_client.ecs_service_name
-  alb_listener    = module.alb_client.arn_listener
+  alb_listener    = module.alb_consolidated.arn_listener
   tg_blue         = module.target_group_client_blue.tg_name
   tg_green        = module.target_group_client_green.tg_name
   sns_topic_arn   = module.sns.sns_arn
