@@ -1,85 +1,82 @@
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: MIT-0
-
 variable "name" {
-  description = "A name for the target group or ALB"
+  description = "Name to be used on all resources as prefix"
   type        = string
-}
-
-variable "target_group" {
-  description = "The ARN of the created target group"
-  type        = string
-  default     = ""
-}
-
-variable "target_group_green" {
-  description = "The ANR of the created target group"
-  type        = string
-  default     = ""
 }
 
 variable "create_alb" {
-  description = "Set to true to create an ALB"
-  type        = bool
-  default     = false
-}
-
-variable "enable_https" {
-  description = "Set to true to create a HTTPS listener"
+  description = "Controls if the Application Load Balancer should be created"
   type        = bool
   default     = false
 }
 
 variable "create_target_group" {
-  description = "Set to true to create a Target Group"
+  description = "Controls if the Target Group should be created"
   type        = bool
   default     = false
 }
 
 variable "subnets" {
-  description = "Subnets IDs for ALB"
-  type        = list(any)
+  description = "A list of subnets to associate with the ALB"
+  type        = list(string)
   default     = []
 }
 
 variable "security_group" {
-  description = "Security group ID for the ALB"
+  description = "The security group of the ALB"
   type        = string
   default     = ""
 }
 
-variable "port" {
-  description = "The port that the targer group will use"
-  type        = number
-  default     = 80
-}
-
-variable "protocol" {
-  description = "The protocol that the target group will use"
+variable "target_group" {
+  description = "The target group ARN to associate with the ALB"
   type        = string
   default     = ""
 }
 
 variable "vpc" {
-  description = "VPC ID for the Target Group"
+  description = "VPC ID to create the target group in"
   type        = string
   default     = ""
+}
+
+variable "port" {
+  description = "Port for the target group"
+  type        = number
+  default     = 80
+}
+
+variable "protocol" {
+  description = "Protocol for the target group"
+  type        = string
+  default     = "HTTP"
 }
 
 variable "tg_type" {
-  description = "Target Group Type (instance, IP, lambda)"
+  description = "Type of target group"
   type        = string
-  default     = ""
+  default     = "ip"
 }
 
 variable "health_check_path" {
-  description = "The path in which the ALB will send health checks"
+  description = "Path for the health check"
   type        = string
-  default     = ""
+  default     = "/"
 }
 
 variable "health_check_port" {
-  description = "The port to which the ALB will send health checks"
+  description = "Port for the health check"
   type        = number
   default     = 80
+}
+
+variable "path_pattern" {
+  description = "Path pattern for the listener rule"
+  type        = list(string)
+  default     = []
+}
+
+variable "priority" {
+  description = "Priority for the listener rule"
+  type        = number
+  default     = null
 }
