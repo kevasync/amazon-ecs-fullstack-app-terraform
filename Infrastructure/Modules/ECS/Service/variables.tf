@@ -45,3 +45,9 @@ variable "container_name" {
   description = "The name of the container"
   type        = string
 }
+
+variable "is_development" {
+  description = "Flag to indicate if this is a development service, which will use Fargate Spot"
+  type        = bool
+  default     = false
+}
