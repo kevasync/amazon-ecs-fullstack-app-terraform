@@ -11,14 +11,7 @@ resource "aws_ecs_service" "ecs_service" {
   task_definition                   = var.arn_task_definition
   desired_count                     = var.desired_tasks
   health_check_grace_period_seconds = 10
-  launch_type                       = "FARGATE"
-  
-  # Enable Fargate Spot for cost optimization
-  capacity_provider_strategy {
-    capacity_provider = "FARGATE_SPOT"
-    weight           = 100
-    base            = 0
-  }
+  launch_type                       = var.is_development ? "FARGATE_SPOT" : "FARGATE"
 
   network_configuration {
     security_groups = [var.arn_security_group]
